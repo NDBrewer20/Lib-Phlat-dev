@@ -6,7 +6,16 @@ It's what [Phocus](https://github.com/NDBrewer20/Phocus) and [Phield Guide](http
 
 ## Embedding
 
-Needs [LibStub](https://www.wowace.com/projects/libstub). Drop the `LibPhlat-1.0` folder into your addon's `Libs` and load it after LibStub:
+Needs [LibStub](https://www.wowace.com/projects/libstub). If you release with the [BigWigs packager](https://github.com/BigWigsMods/packager), add it to your `.pkgmeta` and it gets pulled in at build time:
+
+```yaml
+externals:
+  Libs/LibPhlat-1.0:
+    url: https://github.com/NDBrewer20/Lib-Phlat-dev
+    tag: latest
+```
+
+Otherwise copy this repo into your addon's `Libs\LibPhlat-1.0`. Either way, load it after LibStub:
 
 ```xml
 <Include file="Libs\LibPhlat-1.0\LibPhlat-1.0.xml"/>

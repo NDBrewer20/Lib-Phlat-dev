@@ -1,0 +1,4 @@
+package-as: LibPhlat-1.0
+
+ignore:
+  - README.md
