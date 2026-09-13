@@ -1,24 +1,17 @@
 --------------------------------------------------------------------------------
 -- LibPhlat-1.0
 --
--- Flat, dark widget kit. Everything is built from bare frames and solid colour
--- textures on purpose: Blizzard renames templates and atlases between patches,
--- and none of this should break when they do.
+-- flat dark widget kit for addon panels. everything is plain frames and color
+-- textures so Blizzard renaming templates or atlases doesn't break it.
 --
--- Lifted out of Phocus so Phocus and Phield Guide build their panels from the
--- same parts. One kit per addon:
---
---   local UI = LibStub("LibPhlat-1.0"):New({ ... })
---
--- and every UI.Thing below is called the same way it always was.
+--   local UI = LibStub("LibPhlat-1.0"):New(config)
 --------------------------------------------------------------------------------
 
-local MAJOR, MINOR = "LibPhlat-1.0", 6
+local MAJOR, MINOR = "LibPhlat-1.0", 7
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then return end
 
--- Only one dropdown list is ever open, across every kit built from this library,
--- so the open one is tracked out here rather than once per addon.
+-- only one dropdown list can be open at a time, across every kit.
 local openList
 
 local function CloseOpenList()
@@ -26,15 +19,21 @@ local function CloseOpenList()
 end
 lib.CloseDropdowns = CloseOpenList
 
+-- options can be a value or a function that returns one.
+local function Resolve(value)
+	if type(value) == "function" then return value() end
+	return value
+end
+
 --------------------------------------------------------------------------------
 -- New
 --
--- `config` wires up the things the kit cannot work out for itself:
+-- config is optional and so is everything in it:
 --
---   config.Accent()          -> { r, g, b } to override the class colour, or nil
---   config.Get(key)          -> the value a row with that key should show
---   config.Set(key, value)   store it, and refresh whatever needs refreshing
---   config.colors            palette overrides, merged over the defaults
+--   config.Accent()          returns { r, g, b } to use instead of class color
+--   config.Get(key)          returns the stored value for a layout row
+--   config.Set(key, value)   stores the value from a layout row
+--   config.colors            palette entries to override
 --------------------------------------------------------------------------------
 
 function lib:New(config)
@@ -53,24 +52,23 @@ function lib:New(config)
 		border   = { 0, 0, 0, 0.85 },
 		text     = { 0.920, 0.920, 0.950 },
 		dim      = { 0.600, 0.600, 0.660 },
+		disabled = { 0.420, 0.420, 0.460 },
 	}
 
-	-- An addon can repaint any of these without the kit caring which.
 	for key, value in pairs(config.colors or {}) do
 		UI.colors[key] = value
 	end
 
 	--------------------------------------------------------------------------------
-	-- Accent colour
+	-- Accent
 	--------------------------------------------------------------------------------
 
 	local accent
 	local accentRegions = {}
 
-	-- Follows the player's class colour unless the Panel tab overrides it.
+	-- class color unless config.Accent gives one. cached until RefreshAccent.
 	function UI.Accent()
 		if not accent then
-			-- Whatever the addon says it wants, if it says anything; class colour if not.
 			local override = config.Accent and config.Accent()
 			if override then
 				accent = override
@@ -84,28 +82,28 @@ function lib:New(config)
 		return accent[1], accent[2], accent[3]
 	end
 
-	-- Regions registered here re-tint on demand, so changing the accent does not
-	-- mean rebuilding the panel.
-	function UI.Accented(region, alpha)
-		accentRegions[region] = alpha or 1
+	local function Tint(region, alpha)
 		local r, g, b = UI.Accent()
 		if region.SetColorTexture then
-			region:SetColorTexture(r, g, b, alpha or 1)
+			region:SetColorTexture(r, g, b, alpha)
 		else
-			region:SetTextColor(r, g, b, alpha or 1)
+			region:SetTextColor(r, g, b, alpha)
 		end
+	end
+
+	-- paints a texture or font string in the accent and keeps it for RefreshAccent.
+	function UI.Accented(region, alpha)
+		alpha = alpha or 1
+		accentRegions[region] = alpha
+		Tint(region, alpha)
 		return region
 	end
 
+	-- re-reads the accent and repaints everything accented so far.
 	function UI.RefreshAccent()
 		accent = nil
-		local r, g, b = UI.Accent()
 		for region, alpha in pairs(accentRegions) do
-			if region.SetColorTexture then
-				region:SetColorTexture(r, g, b, alpha)
-			else
-				region:SetTextColor(r, g, b, alpha)
-			end
+			Tint(region, alpha)
 		end
 	end
 
@@ -113,11 +111,8 @@ function lib:New(config)
 	-- Primitives
 	--------------------------------------------------------------------------------
 
-	-- Every flat fill the kit has painted, against the colour it was painted
-	-- from. Same idea as the accent regions below: an addon that changes what a
-	-- colour means -- how see-through the window is, say -- edits the entry in
-	-- UI.colors and calls Repaint, and what is already on screen follows instead
-	-- of having to be built again.
+	-- every fill and the color table it came from, so Repaint can redo them after
+	-- an entry in UI.colors changes.
 	local fills = {}
 
 	local function Fill(frame, layer, color)
@@ -135,7 +130,7 @@ function lib:New(config)
 		end
 	end
 
-	-- Four edge textures in place of a backdrop template.
+	-- four edge textures instead of a backdrop template.
 	function UI.Border(frame, color, thickness)
 		color = color or UI.colors.border
 		thickness = thickness or 1
@@ -166,18 +161,15 @@ function lib:New(config)
 		return edges
 	end
 
-	-- Every string the kit has drawn, against the size its template asked for.
-	-- The size a template gives is the one thing a font string cannot be asked
-	-- for again once it has been resized, so it is written down on the way past.
+	-- every font string and its template size, since the original size can't be
+	-- read back once it's been scaled.
 	local fontScale, fonts = 1, {}
 
 	function UI.FontScale()
 		return fontScale
 	end
 
-	-- Whole-kit text size. An addon that wants roomier or denser panels sets it
-	-- and everything already drawn follows; anything drawn after comes out at
-	-- the same size on its own.
+	-- scales all kit text, including what's already on screen.
 	function UI.SetFontScale(scale)
 		fontScale = scale or 1
 
@@ -203,6 +195,7 @@ function lib:New(config)
 		return fs
 	end
 
+	-- tooltips read tipTitle and tipBody off the frame.
 	function UI.ShowTooltip(frame)
 		if not (frame.tipTitle or frame.tipBody) then return end
 		GameTooltip:SetOwner(frame, "ANCHOR_RIGHT")
@@ -224,25 +217,15 @@ function lib:New(config)
 	--------------------------------------------------------------------------------
 	-- Glyphs
 	--
-	-- Blizzard's own flat icon set, tinted to wear the panel's colours. A caller
-	-- asks for a size and a colour and gets a glyph; which art is behind it is
-	-- this file's business and nobody else's.
+	-- Blizzard's flat uitools icons tinted to match the panel. clients without the
+	-- atlas fall back to the old button art.
 	--------------------------------------------------------------------------------
 
-	-- Stands in for an icon we don't have yet (an empty box, or a spell name the
-	-- game doesn't recognise).
+	-- placeholder for an icon that's missing or unknown.
 	local UNKNOWN_ICON = "Interface/ICONS/INV_Misc_QuestionMark"
 
-	-- The proper flat art the note above was waiting for turned out to already be
-	-- in the game: `uitools-icon-*` is Blizzard's own flat set, white line art on
-	-- nothing at 20x20, drawn in the same register as the rest of this kit. So
-	-- nothing is shipped and nothing is drawn by hand -- the old `Interface/Buttons`
-	-- art each one replaces is kept as `file`, for a build that ever turns up
-	-- without the atlas.
-	--
-	-- `fill` is how much of the 20x20 cell the art actually uses. They differ --
-	-- the cross uses 12 of the 20, the gear nearly all of it -- and without it a
-	-- caller asking for a 10px cross would get 6px of cross with air round it.
+	-- fill is how much of the 20x20 atlas cell the art covers, so it can be grown
+	-- to draw at the size asked for.
 	local GLYPHS = {
 		chevron = {
 			atlas = "uitools-icon-chevron-down", fill = 0.6,
@@ -262,17 +245,14 @@ function lib:New(config)
 		},
 	}
 
-	-- A glyph is a frame around one texture rather than the texture itself, so it
-	-- can be anchored, shown and recoloured as a unit -- and so a swap like this
-	-- one changes nothing at the call site.
+	-- the texture sits in a frame so it can be anchored, shown and tinted as one.
 	local function Glyph(parent, size, color, glyph, facing)
 		local holder = CreateFrame("Frame", nil, parent)
 		holder:SetSize(size, size)
 
 		holder.texture = holder:CreateTexture(nil, "OVERLAY")
 
-		-- Grown past the holder by whatever padding the art carries, so the size
-		-- asked for is the size drawn.
+		-- grow past the holder by the art's padding.
 		local grow = size * (1 / glyph.fill - 1) / 2
 		holder.texture:SetPoint("TOPLEFT", -grow, grow)
 		holder.texture:SetPoint("BOTTOMRIGHT", grow, -grow)
@@ -281,25 +261,20 @@ function lib:New(config)
 			holder.texture:SetAtlas(glyph.atlas)
 		else
 			holder.texture:SetTexture(glyph.file)
-			holder.texture:SetDesaturated(true) -- chrome, not treasure
+			holder.texture:SetDesaturated(true)
 
-			-- The old art is one arrow pointing down, so a sideways one is that
-			-- arrow turned: the 8-coordinate form of SetTexCoord, a quarter
-			-- anti-clockwise.
+			-- old arrow only points down, turn the coords a quarter for right.
 			if facing == "right" then
 				holder.texture:SetTexCoord(1, 0, 0, 0, 1, 1, 0, 1)
 			end
 		end
 
-		-- Art this size is being drawn at a size it was not authored at, and
-		-- snapping it to whole pixels is what makes a clean line go soft.
+		-- pixel snapping blurs art drawn away from its native size.
 		holder.texture:SetSnapToPixelGrid(false)
 		holder.texture:SetTexelSnappingBias(0)
 
-		-- There is no chevron pointing up in the set, so the one pointing down is
-		-- turned over. A rotation rather than a flipped texture coordinate,
-		-- because SetAtlas owns the coordinates and setting them again would point
-		-- the texture at some other part of the sheet.
+		-- no up chevron in the set so the down one is rotated. SetAtlas owns the
+		-- tex coords so they can't be flipped instead.
 		if facing == "up" then
 			holder.texture:SetRotation(math.pi)
 		end
@@ -312,7 +287,7 @@ function lib:New(config)
 		return holder
 	end
 
-	-- `facing` is "down" (the default), "up" or "right".
+	-- facing is "down" (default), "up" or "right".
 	function UI.Chevron(parent, size, color, facing)
 		local glyph = facing == "right" and GLYPHS.chevronRight or GLYPHS.chevron
 		return Glyph(parent, size, color, glyph, facing)
@@ -326,10 +301,8 @@ function lib:New(config)
 		return Glyph(parent, size, color, GLYPHS.cross)
 	end
 
-	-- A glyph that behaves like a button. Sized a little larger than the glyph it
-	-- holds so there is something to aim at, and tinted the same three ways as the
-	-- rest of the chrome: dim at rest, accented under the cursor, greyed when it has
-	-- nothing to do.
+	-- glyph as a button, padded so it's easier to hit. dim at rest, accent on
+	-- hover, grey when disabled.
 	function UI.GlyphButton(parent, size, Build, title, body)
 		local button = CreateFrame("Button", nil, parent)
 		button:SetSize(size + 8, size + 8)
@@ -340,7 +313,7 @@ function lib:New(config)
 
 		function button:Refresh()
 			if not self:IsEnabled() then
-				self.glyph:SetColor({ 0.42, 0.42, 0.46 })
+				self.glyph:SetColor(UI.colors.disabled)
 			elseif self.hovered then
 				self.glyph:SetColor({ UI.Accent() })
 			else
@@ -375,15 +348,14 @@ function lib:New(config)
 		button.bg = Fill(button, "BACKGROUND", UI.colors.control)
 		button.edges = UI.Border(button)
 
-		-- Buttons show their HIGHLIGHT layer on mouseover for free.
+		-- the HIGHLIGHT layer shows on mouseover by itself.
 		UI.Accented(button:CreateTexture(nil, "HIGHLIGHT"), 0.22):SetAllPoints()
 
 		button.label = UI.Text(button, text, "GameFontHighlightSmall")
 		button.label:SetPoint("CENTER")
 		button.label:SetJustifyH("CENTER")
 
-		-- The native Button:SetText needs SetFontString, which brings Blizzard's
-		-- disabled-font handling with it. This is the whole of what we want.
+		-- the native SetText needs SetFontString, which drags in Blizzard's disabled font.
 		function button:SetText(label)
 			self.label:SetText(label)
 		end
@@ -392,7 +364,7 @@ function lib:New(config)
 			self.label:SetTextColor(unpack(UI.colors.text))
 		end)
 		button:SetScript("OnDisable", function(self)
-			self.label:SetTextColor(0.40, 0.40, 0.44)
+			self.label:SetTextColor(unpack(UI.colors.disabled))
 		end)
 		return button
 	end
@@ -414,7 +386,7 @@ function lib:New(config)
 
 		function box:SetChecked(state)
 			self.checked = state and true or false
-			if self.checked then self.mark:Show() else self.mark:Hide() end
+			self.mark:SetShown(self.checked)
 		end
 		function box:GetChecked()
 			return self.checked
@@ -461,8 +433,7 @@ function lib:New(config)
 		track:SetPoint("RIGHT")
 		track:SetColorTexture(0.20, 0.20, 0.24, 1)
 
-		-- SetThumbTexture takes a texture created on the slider; the slider then
-		-- positions it, which lets the fill bar simply anchor to the thumb.
+		-- the slider positions the thumb itself, so the fill can just anchor to it.
 		local thumb = slider:CreateTexture(nil, "OVERLAY")
 		thumb:SetSize(8, 16)
 		UI.Accented(thumb, 1)
@@ -498,36 +469,49 @@ function lib:New(config)
 		return swatch
 	end
 
-	-- Wraps the Blizzard colour picker, which changed shape in 10.2.5. Falls back to
-	-- the older field-assignment form if the current one is missing.
+	-- ColorPickerFrame changed in 10.2.5. older clients get the field setup, where
+	-- the opacity slider runs backwards from alpha.
 	function UI.OpenColorPicker(r, g, b, a, hasAlpha, callback)
+		local modern = ColorPickerFrame.SetupColorPickerAndShow ~= nil
+
 		local function Apply()
 			local nr, ng, nb = ColorPickerFrame:GetColorRGB()
 			local na = 1
 			if hasAlpha then
-				if ColorPickerFrame.GetColorAlpha then
+				if modern then
 					na = ColorPickerFrame:GetColorAlpha()
+				---@diagnostic disable-next-line: undefined-global
 				elseif OpacitySliderFrame then
-					na = OpacitySliderFrame:GetValue()
+					---@diagnostic disable-next-line: undefined-global
+					na = 1 - OpacitySliderFrame:GetValue()
 				end
 			end
 			callback(nr, ng, nb, na)
 		end
 
-		local info = {
-			swatchFunc = Apply,
-			opacityFunc = Apply,
-			cancelFunc = function() callback(r, g, b, a) end,
-			hasOpacity = hasAlpha and true or false,
-			opacity = a or 1,
-			r = r, g = g, b = b,
-		}
+		local cancel = function() callback(r, g, b, a) end
 
-		if ColorPickerFrame.SetupColorPickerAndShow then
-			ColorPickerFrame:SetupColorPickerAndShow(info)
+		if modern then
+			ColorPickerFrame:SetupColorPickerAndShow({
+				swatchFunc = Apply,
+				opacityFunc = Apply,
+				cancelFunc = cancel,
+				hasOpacity = hasAlpha and true or false,
+				opacity = a or 1,
+				r = r, g = g, b = b,
+			})
 		else
-			for key, value in pairs(info) do ColorPickerFrame[key] = value end
+			-- color goes in before func, or setting it fires the callback straight away.
+			ColorPickerFrame.func = nil
 			ColorPickerFrame:SetColorRGB(r, g, b)
+			ColorPickerFrame.func = Apply
+			ColorPickerFrame.opacityFunc = Apply
+			ColorPickerFrame.cancelFunc = cancel
+			ColorPickerFrame.hasOpacity = hasAlpha and true or false
+			ColorPickerFrame.opacity = 1 - (a or 1)
+
+			-- reshown so OnShow picks up the opacity fields.
+			ColorPickerFrame:Hide()
 			ColorPickerFrame:Show()
 		end
 	end
@@ -535,12 +519,8 @@ function lib:New(config)
 	--------------------------------------------------------------------------------
 	-- Dropdown
 	--
-	-- An item can carry a `submenu`: a list of its own, or a function that builds
-	-- one on demand. Hovering the row opens it off the side of the list, and
-	-- clicking the row still picks the row itself, so a parent is one click and
-	-- what sits under it is one hover away. That beats drilling in and back out,
-	-- which costs a click each way and loses the rest of the list while you are
-	-- in there.
+	-- an item can have a submenu, a list or a function that builds one. hovering
+	-- the item opens it off the side and clicking still picks the item itself.
 	--------------------------------------------------------------------------------
 
 	UI.CloseDropdowns = CloseOpenList
@@ -552,8 +532,7 @@ function lib:New(config)
 		return math.max(8, count * ENTRY_HEIGHT + PANEL_PAD * 2)
 	end
 
-	-- One row. The list and the flyout are the same panel twice, so they are
-	-- built and filled by the same pair of functions rather than two near copies.
+	-- one row, used by both the list and the flyout.
 	local function NewEntry(panel, index, OnClick, OnEnter)
 		local entry = CreateFrame("Button", nil, panel)
 		entry:SetHeight(ENTRY_HEIGHT)
@@ -573,9 +552,8 @@ function lib:New(config)
 		return entry
 	end
 
-	-- The arrow that says a row has more under it. Made the first time a row
-	-- wants one, since most rows never do, and the text gives up the space for
-	-- it so a long name does not run underneath.
+	-- arrow for rows with a submenu, made the first time one needs it. the label
+	-- gives up the space so long text doesn't run under it.
 	local function EntryArrow(entry, wanted)
 		if wanted and not entry.arrow then
 			entry.arrow = UI.Chevron(entry, 9, UI.colors.dim, "right")
@@ -612,10 +590,8 @@ function lib:New(config)
 		panel:SetHeight(PanelHeight(#items))
 	end
 
-	-- The text for a value, looking into submenus as well as the top list. Only
-	-- a submenu that is already a table is searched: calling a builder here would
-	-- mean building every one of them to draw a single label, and a caller that
-	-- hands over builders has its own label anyway.
+	-- the text for a value, submenus included. builder functions are skipped so
+	-- drawing one label doesn't build every submenu.
 	local function FindText(items, value)
 		for i = 1, #items do
 			local item = items[i]
@@ -650,9 +626,8 @@ function lib:New(config)
 		list.entries = {}
 		dd.list = list
 
-		-- The panel that opens off the side for a row with a submenu. One per
-		-- dropdown, refilled for whichever row is under the cursor. It is a child
-		-- of the list so it sits above the click catcher and goes away with it.
+		-- panel for a submenu, one per dropdown and refilled per row. parented to
+		-- the list so it sits above the click catcher and closes with it.
 		local flyout = CreateFrame("Frame", nil, list)
 		flyout:SetFrameStrata("FULLSCREEN_DIALOG")
 		flyout:SetFrameLevel(list:GetFrameLevel() + 10)
@@ -663,7 +638,7 @@ function lib:New(config)
 		flyout.entries = {}
 		dd.flyout = flyout
 
-		-- Clicking anywhere outside the list closes it.
+		-- clicking anywhere outside the list closes it.
 		local catcher = CreateFrame("Button", nil, UIParent)
 		catcher:SetAllPoints(UIParent)
 		catcher:SetFrameStrata("FULLSCREEN_DIALOG")
@@ -689,10 +664,8 @@ function lib:New(config)
 			flyout:Hide()
 		end
 
-		-- Picking a row, whether it came off the list or off a flyout. keepOpen
-		-- is for lists where more than one entry can be picked: the label is the
-		-- caller's summary of the set, so SetValue must not overwrite it with the
-		-- entry just clicked.
+		-- keepOpen is for multi pick lists. the caller owns the label there, so it
+		-- isn't replaced with the entry that was clicked.
 		local function OnEntryClick(self)
 			if not dd.keepOpen then
 				HideFlyout()
@@ -703,19 +676,16 @@ function lib:New(config)
 		end
 
 		local function OpenFlyout(entry)
-			local items = entry.submenu
-			if type(items) == "function" then items = items() end
+			local items = Resolve(entry.submenu)
 			if type(items) ~= "table" or #items == 0 then return HideFlyout() end
 
 			flyout.owner = entry
 			FillPanel(flyout, items, OnEntryClick)
 
-			-- Re-stated on every open: the list is restrata'd when it shows, and
-			-- a child keeps whatever level it was given, not a relative one.
+			-- set again every open since the list's level can change when it shows.
 			flyout:SetFrameLevel(list:GetFrameLevel() + 10)
 
-			-- Level with the row it belongs to, and out the left instead when
-			-- there is not enough screen to the right of the list.
+			-- level with its row, and out the left side if there's no room on the right.
 			local y = -(entry.index - 1) * ENTRY_HEIGHT
 			flyout:ClearAllPoints()
 			if (list:GetRight() or 0) + flyout:GetWidth() <= UIParent:GetRight() then
@@ -725,7 +695,7 @@ function lib:New(config)
 			end
 			flyout:Show()
 
-			-- Off the bottom, so it slides up until it is not.
+			-- slide it back up if it runs off the bottom of the screen.
 			local bottom = flyout:GetBottom()
 			if bottom and bottom < 0 then
 				local point, relative, relativePoint, x = flyout:GetPoint(1)
@@ -733,16 +703,12 @@ function lib:New(config)
 			end
 		end
 
-		-- Only the list opens flyouts. A flyout row needs no OnEnter at all --
-		-- the cursor being on it is what keeps the thing alive.
+		-- only rows on the main list open a flyout.
 		local function OnEntryEnter(self)
 			if self.submenu then OpenFlyout(self) else HideFlyout() end
 		end
 
-		-- A flyout that closed the moment the cursor left its row would be
-		-- impossible to reach, so it lives while the cursor is over either it or
-		-- the row that opened it, and it is checked on a slow tick rather than on
-		-- every leave.
+		-- stays open while the mouse is on the flyout or the row that opened it.
 		flyout:SetScript("OnUpdate", function(self, elapsed)
 			self.since = (self.since or 0) + elapsed
 			if self.since < 0.1 then return end
@@ -768,10 +734,10 @@ function lib:New(config)
 		end
 
 		dd:SetScript("OnClick", function()
-			if list:IsShown() then list:Hide() else list:Show() end
+			list:SetShown(not list:IsShown())
 		end)
 		dd:SetScript("OnDisable", function(self)
-			self.label:SetTextColor(0.40, 0.40, 0.44)
+			self.label:SetTextColor(unpack(UI.colors.disabled))
 			list:Hide()
 		end)
 		dd:SetScript("OnEnable", function(self)
@@ -784,9 +750,7 @@ function lib:New(config)
 	-- Scrolling
 	--------------------------------------------------------------------------------
 
-	-- `SetInsetTop` reserves a strip along the top that does not scroll, for a page
-	-- that wants something pinned above its rows. Everything below works off the
-	-- remaining height rather than the full one.
+	-- SetInsetTop keeps a strip along the top that doesn't scroll.
 	function UI.ScrollArea(parent, width, height)
 		local area = CreateFrame("Frame", nil, parent)
 		area:SetSize(width, height)
@@ -820,8 +784,7 @@ function lib:New(config)
 			return math.max(0, content:GetHeight() - viewHeight)
 		end
 
-		-- The one place that pushes width, height and inset onto the frames, so a
-		-- resize and an inset change can never disagree about the geometry.
+		-- one spot that pushes size and inset onto the frames so they can't disagree.
 		local function Apply(keepScroll)
 			viewHeight = height - inset
 
@@ -837,21 +800,19 @@ function lib:New(config)
 			track:SetPoint("TOPRIGHT", 0, -inset)
 			track:SetSize(5, viewHeight)
 
-			area:ScrollTo(keepScroll or 0) -- clamped to whatever the new range allows
+			area:ScrollTo(keepScroll or 0)
 		end
 
+		-- keeps the scroll position, the inset can change on every step of a slider drag.
 		function area:SetInsetTop(value)
 			value = value or 0
 			if inset == value then return end
 
-			-- Kept, not reset: the inset changes while a size slider is being dragged,
-			-- and snapping to the top on every step would be unusable.
 			inset = value
 			Apply(scroll:GetVerticalScroll())
 		end
 
-		-- Same again for the whole area, which is what a resizable window needs.
-		-- Whatever is inside still has to re-lay itself out and call Update.
+		-- for resizable windows. the content still has to lay itself out and call Update.
 		function area:Resize(newWidth, newHeight)
 			if newWidth == width and newHeight == height then return end
 
@@ -886,7 +847,7 @@ function lib:New(config)
 			area:ScrollTo(scroll:GetVerticalScroll() - delta * 36)
 		end)
 
-		-- Dragging the thumb maps the cursor onto the scroll range directly.
+		-- dragging the thumb maps the cursor straight onto the scroll range.
 		thumb:SetScript("OnDragStart", function(self)
 			self:SetScript("OnUpdate", function(bar)
 				local range = Range()
@@ -947,17 +908,12 @@ function lib:New(config)
 		frame.title = UI.Text(bar, titleText, "GameFontNormalLarge")
 		frame.title:SetPoint("LEFT", 14, 1)
 
-		-- The kit's own cross rather than Blizzard's UIPanelCloseButton, which
-		-- arrives gold and beveled and matches nothing else on the window. This one
-		-- wears the same three tints as the rest of the chrome: dim at rest,
-		-- accented under the cursor.
+		-- the kit's cross instead of UIPanelCloseButton, which is gold and doesn't match.
 		local close = UI.GlyphButton(bar, 12, UI.Cross)
 		close:SetPoint("RIGHT", -6, 0)
 		close:SetScript("OnClick", function() frame:Hide() end)
 
-		-- Handed out because a window registered with the UI panel system has to
-		-- close through HideUIPanel, not a bare Hide, or the panel system keeps
-		-- thinking the slot is still taken.
+		-- exposed so a window in the UI panel system can close with HideUIPanel instead.
 		frame.close = close
 
 		if globalName then tinsert(UISpecialFrames, globalName) end
@@ -967,42 +923,40 @@ function lib:New(config)
 	--------------------------------------------------------------------------------
 	-- Layout
 	--
-	-- Settings are stacked as uniform rows: label on the left, control on the right.
-	-- Every builder returns a widget with an Update method and registers it with the
-	-- layout, so a single UpdateAll re-reads the whole page after any change. That is
-	-- what keeps dependent controls (disabled states, previews) honest.
+	-- settings stacked as rows, label on the left and control on the right. every
+	-- builder registers an Update so UpdateAll can re-read the page after a change.
 	--------------------------------------------------------------------------------
 
 	local Layout = {}
 	Layout.__index = Layout
 
-	-- Handed out so an addon can add row builders of its own to the same layout.
+	-- exposed so an addon can add its own row builders.
 	UI.LayoutProto = Layout
 
 	function UI.Layout(parent, width)
-		-- `rows` keys every row by its name, which is what lets the tour point at a
-		-- setting without the page it lives on having to hand anything out.
 		return setmetatable({
 			parent = parent, width = width, y = 0,
-			widgets = {}, rows = {},
-			-- Every laid-out thing, in the order it was added, so a page can be
-			-- reflowed when a row hides rather than leaving a hole where it was.
+			widgets = {},
+			-- rows by name, so other code can find a setting's row.
+			rows = {},
+			-- everything added in order, so Reflow can close gaps left by hidden rows.
 			elements = {},
 		}, Layout)
 	end
 
-	-- Enable/Disable rather than SetEnabled: they exist on every control type here.
+	-- Enable and Disable exist on every control here, SetEnabled doesn't.
 	local function SetControlEnabled(control, enabled)
 		if enabled then control:Enable() else control:Disable() end
 	end
 
-	local function Round(value, step)
-		if step and step >= 1 then return math.floor(value + 0.5) end
-		return value
+	-- snaps a value to the nearest step counted from min.
+	local function Snap(value, min, step)
+		if not step or step <= 0 then return value end
+		min = min or 0
+		return min + math.floor((value - min) / step + 0.5) * step
 	end
 
-	-- A row with a `key` and no get/set of its own falls through to wherever the
-	-- addon keeps its settings, which is all config.Get and config.Set are.
+	-- a row with a key and no get/set of its own goes through config.Get and config.Set.
 	local function Getter(opts)
 		return opts.get or function()
 			return config.Get and config.Get(opts.key)
@@ -1027,9 +981,8 @@ function lib:New(config)
 		return self.y
 	end
 
-	-- Records one laid-out thing and puts it in place. `place(y)` positions whatever
-	-- regions it owns, `pre` is the extra gap it wants above itself when it is not
-	-- the first thing on the page, and `hidden` is asked on every reflow.
+	-- adds one element and places it. place(y) positions its regions, pre is extra
+	-- space above it when it isn't first, and hidden is checked on every reflow.
 	function Layout:Add(element)
 		self.elements[#self.elements + 1] = element
 
@@ -1039,9 +992,7 @@ function lib:New(config)
 		return element
 	end
 
-	-- Re-runs the whole page top to bottom, skipping anything currently hidden and
-	-- closing the gap behind it. Cheap: a page is a few dozen rows and this only
-	-- happens when a control is used.
+	-- lays the page out again top to bottom, skipping hidden elements.
 	function Layout:Reflow()
 		local y = 0
 
@@ -1056,7 +1007,7 @@ function lib:New(config)
 			if not hidden then
 				if element.pre and y > 0 then y = y + element.pre end
 				element.place(y)
-				y = y + element.height + element.gap
+				y = y + element.height + (element.gap or 3)
 			end
 		end
 
@@ -1071,31 +1022,27 @@ function lib:New(config)
 		return widget
 	end
 
-	-- Two layouts making up one page -- a pinned strip and the rows scrolling under
-	-- it -- have to answer to each other, since a setting changed in one is often
-	-- previewed in the other. Linking is mutual.
+	-- two layouts on one page that update each other, like a pinned strip over a
+	-- scrolling list.
 	function Layout:Link(other)
 		self.linked, other.linked = other, self
 	end
 
 	function Layout:UpdateAll()
-		-- A linked pair would otherwise refresh each other for ever.
+		-- stops a linked pair from updating each other forever.
 		if self.updating then return end
 		self.updating = true
 
 		for i = 1, #self.widgets do
 			self.widgets[i]:Update()
 		end
-		-- After the widgets, since whether a row hides is usually decided by the
-		-- setting the widget just wrote.
+		-- reflow after the widgets since a new value can decide what's hidden.
 		self:Reflow()
 
 		if self.linked then self.linked:UpdateAll() end
 		self.updating = false
 	end
 
-	-- `hidden` on a header or a note takes the whole section heading away with the
-	-- rows under it, so a section that does not apply leaves no trace.
 	function Layout:Header(text, hidden)
 		local header = UI.Text(self.parent, text, "GameFontNormal")
 		UI.Accented(header, 1)
@@ -1136,8 +1083,7 @@ function lib:New(config)
 		row:EnableMouse(true)
 		if opts.name then self.rows[opts.name] = row end
 
-		-- Handed back on the row so a widget that changes its own height can say so
-		-- and let the next reflow close up behind it.
+		-- kept on the row so a widget that changes height can reflow behind itself.
 		row.element = self:Add({
 			regions = { row },
 			height = height, gap = 3, hidden = opts.hidden,
@@ -1154,10 +1100,8 @@ function lib:New(config)
 		row.label:SetPoint("LEFT", 12, 0)
 		row.label:SetWidth(self.width * 0.55)
 
-		-- A description may be a function, for a row that describes itself
-		-- differently depending on another setting.
 		row.tipTitle = opts.name
-		row.tipBody = type(opts.desc) == "function" and opts.desc() or opts.desc
+		row.tipBody = Resolve(opts.desc)
 		row:SetScript("OnEnter", function(self)
 			hover:Show()
 			UI.ShowTooltip(self)
@@ -1167,10 +1111,8 @@ function lib:New(config)
 			UI.HideTooltip()
 		end)
 
-		-- For a row that names or describes itself differently depending on another
-		-- setting -- Rows or Columns, depending on which way the bar it belongs to
-		-- grows. `opts.name` stays the key the row is filed under, so the tour can
-		-- still find it by a name that does not move about underneath it.
+		-- for a label that depends on another setting. opts.name stays the key the
+		-- row is filed under.
 		function row:SetTitle(text)
 			self.label:SetText(text)
 			self.tipTitle = text
@@ -1181,11 +1123,7 @@ function lib:New(config)
 		end
 
 		function row:SetDisabled(disabled)
-			if disabled then
-				self.label:SetTextColor(0.42, 0.42, 0.46)
-			else
-				self.label:SetTextColor(unpack(UI.colors.text))
-			end
+			self.label:SetTextColor(unpack(disabled and UI.colors.disabled or UI.colors.text))
 		end
 
 		return row
@@ -1202,6 +1140,7 @@ function lib:New(config)
 			layout:UpdateAll()
 		end
 
+		-- the whole row toggles, not just the box.
 		box:SetScript("OnClick", Toggle)
 		row:SetScript("OnMouseUp", function()
 			if box:IsEnabled() and not box:IsMouseOver() then Toggle() end
@@ -1217,10 +1156,8 @@ function lib:New(config)
 		})
 	end
 
-	-- The number beside a slider is editable, because dragging is a poor way to land
-	-- on a particular value. Typing commits on Enter or on clicking away; Escape puts
-	-- the old number back. The slider and the box are two views of the same value, so
-	-- each writes to the other.
+	-- slider with an editable number beside it. typing commits on enter or clicking
+	-- away, escape puts the old number back.
 	function Layout:Slider(opts)
 		local layout, row = self, self:Row(opts)
 		local slider = UI.Slider(row, opts.min, opts.max, opts.step)
@@ -1238,21 +1175,23 @@ function lib:New(config)
 		local applying = false
 		local pending
 
-		-- Only when it is not being typed into, or the caret would jump about under
-		-- the player mid-edit.
+		local function Current()
+			return Snap(get() or opts.min, opts.min, opts.step)
+		end
+
+		-- skipped while typing so the cursor doesn't jump around.
 		local function ShowValue(value)
 			if box:HasFocus() then return end
 			box:SetText(numberFormat:format(value))
 			box:SetCursorPosition(0)
 		end
 
-		-- Anything unreadable, or outside the range, simply does not take -- the box
-		-- is put back to the real value by the Update that follows.
+		-- clamped to the range, anything that isn't a number is ignored.
 		local function Commit(text)
 			local value = tonumber(text)
 			if not value then return end
 
-			value = Round(math.min(math.max(value, opts.min), opts.max), opts.step)
+			value = Snap(math.min(math.max(value, opts.min), opts.max), opts.min, opts.step)
 			set(value)
 			layout:UpdateAll()
 		end
@@ -1263,38 +1202,34 @@ function lib:New(config)
 			self:ClearFocus()
 		end)
 
-		-- Hooked rather than set, so the border still un-highlights itself.
+		-- hooked so the edit box still resets its own border.
 		box:HookScript("OnEditFocusLost", function(self)
 			if self.reverting then
 				self.reverting = nil
 			else
 				Commit(self:GetText())
 			end
-			ShowValue(Round(get() or opts.min, opts.step))
+			ShowValue(Current())
 		end)
 
-		-- commitOnRelease is for settings that are disruptive to apply mid-drag --
-		-- rescaling a window moves the slider out from under the cursor. The readout
-		-- still tracks live so the drag has feedback; only the write waits.
+		-- commitOnRelease holds the write until the mouse is let go, for settings
+		-- that move the slider out from under the cursor. the number still follows.
 		slider:SetScript("OnValueChanged", function(_, value)
 			if applying then return end
-			value = Round(value, opts.step)
+			value = Snap(value, opts.min, opts.step)
 			ShowValue(value)
 
 			if opts.commitOnRelease then
 				pending = value
 			else
 				set(value)
-				-- Re-reading the page mid-drag is what makes previews track the
-				-- slider. Update reapplies this value behind the `applying` guard,
-				-- so it cannot feed back into the drag.
+				-- update mid drag so previews follow. applying stops it feeding back.
 				layout:UpdateAll()
 			end
 		end)
 
 		if opts.commitOnRelease then
-			-- A slider captures the mouse while its thumb is held, so this fires even
-			-- if the cursor has wandered off the control by the time it is released.
+			-- the slider holds the mouse while dragging so this fires even off the control.
 			slider:SetScript("OnMouseUp", function()
 				if pending == nil then return end
 				local value = pending
@@ -1315,7 +1250,7 @@ function lib:New(config)
 				if type(opts.desc) == "function" then row:SetDescription(opts.desc()) end
 
 				applying = true
-				local value = Round(get() or opts.min, opts.step)
+				local value = Current()
 				slider:SetValue(value)
 				ShowValue(value)
 				applying = false
@@ -1343,7 +1278,7 @@ function lib:New(config)
 				SetControlEnabled(dropdown, not disabled)
 				row:SetDisabled(disabled)
 
-				dropdown:SetItems(type(opts.items) == "function" and opts.items() or opts.items)
+				dropdown:SetItems(Resolve(opts.items) or {})
 				dropdown:SetValue(get())
 
 				if extra and extra.Update then extra.Update() end
@@ -1351,9 +1286,8 @@ function lib:New(config)
 		})
 	end
 
-	-- Several picks from one list, and the order they were picked in. The caller
-	-- owns what a pick means and draws the standing into the item text; all this
-	-- does is keep the list open and hand every click back.
+	-- several picks from one list. the caller tracks the picks and writes the label,
+	-- this just keeps the list open and hands back each click.
 	function Layout:MultiSelect(opts)
 		local layout, row = self, self:Row(opts)
 		local dropdown = UI.Dropdown(row, opts.controlWidth or 190)
@@ -1371,8 +1305,8 @@ function lib:New(config)
 				SetControlEnabled(dropdown, not disabled)
 				row:SetDisabled(disabled)
 
-				dropdown:SetItems(opts.items())
-				dropdown.label:SetText(opts.summary())
+				dropdown:SetItems(Resolve(opts.items) or {})
+				dropdown.label:SetText(Resolve(opts.summary) or "")
 			end,
 		})
 	end
@@ -1409,12 +1343,8 @@ function lib:New(config)
 		local box = UI.EditBox(row, opts.controlWidth or 190, 22)
 		box:SetPoint("RIGHT", -12, 0)
 
-		-- Optional preview of whatever you typed (a spell icon, usually).
-		--
-		-- opts.browse turns that preview into the way into a browser as well, so the
-		-- square you were already looking at is the thing you click, instead of
-		-- cramming a fourth control into the row. It shows a question mark while the
-		-- box is empty, since an empty square gives you nothing to aim at.
+		-- opts.icon previews what was typed beside the box, usually a spell icon.
+		-- opts.browse makes that preview a button, with a question mark while empty.
 		local icon, browse
 		if opts.icon or opts.browse then
 			local holder = row
@@ -1442,11 +1372,8 @@ function lib:New(config)
 			end
 		end
 
-		-- opts.reorder turns the row into an entry in a list you can shuffle: move
-		-- up, move down, and take it out. They take the right end of the row and
-		-- push the box along, so a plain input row is left as it was. Each one is
-		-- paired with a `can` that says whether it has anywhere to go, so the top
-		-- entry cannot move up and the empty box at the bottom does nothing at all.
+		-- opts.reorder adds up, down and remove buttons to the end of the row. each
+		-- one's can function decides if it's enabled.
 		local buttons
 		if opts.reorder then
 			local reorder, previous = opts.reorder, nil
@@ -1470,12 +1397,12 @@ function lib:New(config)
 				previous = button
 			end
 
-			-- Added right to left, so they read up, down, remove.
-			Add(UI.Cross, "Remove", "Takes this entry out of the list. The ones under it move up.",
+			-- added right to left so they read up, down, remove.
+			Add(UI.Cross, "Remove", "Takes this entry out of the list.",
 				reorder.remove, reorder.canRemove)
-			Add(UI.Chevron, "Move Down", "Moves this entry one place later in the list.",
+			Add(UI.Chevron, "Move Down", "Moves this entry down one.",
 				reorder.down, reorder.canDown)
-			Add(ChevronUp, "Move Up", "Moves this entry one place earlier in the list.",
+			Add(ChevronUp, "Move Up", "Moves this entry up one.",
 				reorder.up, reorder.canUp)
 
 			box:ClearAllPoints()
@@ -1484,35 +1411,27 @@ function lib:New(config)
 
 		local get, set = Getter(opts), Setter(opts)
 
-		box:SetScript("OnEnterPressed", function(self)
-			self:ClearFocus()
-			set(self:GetText())
-			layout:UpdateAll()
-		end)
-		box:SetScript("OnEditFocusLost", function(self)
-			local c = UI.colors.border
-			self.edges:SetColor(c[1], c[2], c[3], c[4])
+		-- enter and escape already clear focus, so losing focus is the one place it saves.
+		box:HookScript("OnEditFocusLost", function(self)
 			set(self:GetText())
 			layout:UpdateAll()
 		end)
 
 		return layout:Register({
-			-- Handed back so a list that grows and shrinks can show and hide its
-			-- rows. Rows are only ever added to a layout, never taken out of it, so
-			-- a list that has shrunk hides its tail rather than rebuilding.
+			-- returned so a list that shrinks can hide the rows it doesn't need.
 			row = row,
 			Update = function()
 				local disabled = opts.disabled and opts.disabled() or false
 				SetControlEnabled(box, not disabled)
 				row:SetDisabled(disabled)
 
-				-- Never fight the player mid-edit.
+				-- don't overwrite what the player is typing.
 				if not box:HasFocus() then box:SetText(tostring(get() or "")) end
 
-				-- Each reorder button is only live when it has somewhere to go.
 				for index = 1, buttons and #buttons or 0 do
 					local button = buttons[index]
-					SetControlEnabled(button, not disabled and button.enabled())
+					local canMove = not button.enabled or button.enabled()
+					SetControlEnabled(button, not disabled and canMove)
 				end
 
 				if browse then SetControlEnabled(browse, not disabled) end
@@ -1525,8 +1444,7 @@ function lib:New(config)
 						icon:SetTexture(texture)
 						icon:Show()
 					elseif browse then
-						-- Nothing in the box yet, or nothing the game recognises. The
-						-- square stays put because it's still the button.
+						-- keep the question mark up since it's still the button.
 						icon:SetTexture(UNKNOWN_ICON)
 						icon:SetDesaturated(true)
 						icon:Show()
@@ -1540,25 +1458,23 @@ function lib:New(config)
 		})
 	end
 
-	-- opts.text may be a function, for captions that change with state.
+	-- opts.text can be a function for a caption that changes.
 	function Layout:Button(opts)
 		local layout, row = self, self:Row(opts)
-		local caption = type(opts.text) == "function" and opts.text() or opts.text
 
-		local button = UI.Button(row, caption or "Open", opts.controlWidth or 150, 22)
+		local button = UI.Button(row, Resolve(opts.text) or "Open", opts.controlWidth or 150, 22)
 		button:SetPoint("RIGHT", -12, 0)
 
-		-- Only opted-in buttons take right-clicks: enabling it everywhere would let a
-		-- stray right-click fire things like Reset to Defaults.
+		-- right clicks only when asked for, so a stray one can't fire something like a reset.
 		if opts.onRightClick then
 			button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 		end
 
-		button:SetScript("OnClick", function(self, mouseButton)
+		button:SetScript("OnClick", function(clicked, mouseButton)
 			if mouseButton == "RightButton" then
-				opts.onRightClick(self)
+				opts.onRightClick(clicked)
 			else
-				opts.func(self)
+				opts.func(clicked)
 			end
 			layout:UpdateAll()
 		end)
@@ -1570,17 +1486,14 @@ function lib:New(config)
 				SetControlEnabled(button, not disabled)
 				row:SetDisabled(disabled)
 
-				if type(opts.text) == "function" then button:SetText(opts.text()) end
+				if type(opts.text) == "function" then button:SetText(opts.text() or "Open") end
 			end,
 		})
 	end
 
-	-- Read-only view of generated text, e.g. a macro body. Deliberately unlike the
-	-- edit box: sunken and borderless with an accent rule down the side, so it reads
-	-- as output rather than as something to type in.
-	--
-	-- opts.icon adds the icon that output is written with beside the text, and with
-	-- opts.onClick that icon doubles as the control for changing it.
+	-- read only text like a generated macro. sunken with an accent rule so it reads
+	-- as output, not something to type in. opts.icon adds an icon beside it and
+	-- opts.onClick makes that icon clickable.
 	function Layout:Code(opts)
 		local layout = self
 		local height = opts.height or 78
@@ -1609,8 +1522,6 @@ function lib:New(config)
 
 		local icon, iconButton
 		if opts.icon then
-			-- Framed the same way as the icon preview elsewhere in the panel, so a
-			-- macro's icon reads as an icon and not as decoration on the text.
 			iconButton = CreateFrame("Button", nil, block)
 			iconButton:SetSize(ICON, ICON)
 			iconButton:SetPoint("RIGHT", -10, 0)
@@ -1632,11 +1543,11 @@ function lib:New(config)
 				if opts.onRightClick then
 					iconButton:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 				end
-				iconButton:SetScript("OnClick", function(self, mouseButton)
+				iconButton:SetScript("OnClick", function(clicked, mouseButton)
 					if mouseButton == "RightButton" then
-						opts.onRightClick(self)
+						opts.onRightClick(clicked)
 					else
-						opts.onClick(self)
+						opts.onClick(clicked)
 					end
 					layout:UpdateAll()
 				end)
@@ -1644,23 +1555,19 @@ function lib:New(config)
 		end
 
 		return self:Register({
-			-- Handed back for the same reason a row is: something outside may need
-			-- to know where this block starts and stops.
+			-- returned so outside code can find where the block sits.
 			block = block,
 			Update = function()
 				text:SetText(opts.text())
 				if not icon then return end
 
 				icon:SetTexture(opts.icon())
-				-- The description says what the icon currently is, so it is re-read
-				-- along with everything else rather than fixed when the row is built.
-				iconButton.tipBody = type(opts.iconDesc) == "function" and opts.iconDesc()
-					or opts.iconDesc
+				iconButton.tipBody = Resolve(opts.iconDesc)
 			end,
 		})
 	end
 
-	-- Label on the left, a read-only value on the right.
+	-- label on the left, read only value on the right.
 	function Layout:Info(opts)
 		local row = self:Row(opts)
 
@@ -1671,7 +1578,7 @@ function lib:New(config)
 
 		return self:Register({
 			Update = function()
-				value:SetText(type(opts.value) == "function" and opts.value() or opts.value or "")
+				value:SetText(Resolve(opts.value) or "")
 			end,
 		})
 	end
