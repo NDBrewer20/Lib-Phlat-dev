@@ -297,10 +297,11 @@ lib:Module("Glyphs", function(UI, P, config)
 		end
 		if title or body then button.tipTitle, button.tipBody = title, body end
 
-		-- the round style cuts the icon and its washes into a circle.
+		-- the round style cuts the icon and its washes into a circle. the icon gets its
+		-- own circle so an inset leaves the bg showing round it as a ring.
 		local function Round(self)
 			if self.style.shape ~= "round" then return end
-			RoundMask(self, icon, self)
+			RoundMask(self, icon)
 			RoundMask(self, self.bg, self)
 			RoundMask(self, self.highlight, self)
 		end
