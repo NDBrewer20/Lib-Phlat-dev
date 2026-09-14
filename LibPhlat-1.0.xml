@@ -1,3 +1,14 @@
 <Ui xmlns="http://www.blizzard.com/wow/ui/">
 	<Script file="LibPhlat-1.0.lua"/>
+	<Script file="Core\Theme.lua"/>
+	<Script file="Core\Widget.lua"/>
+	<Script file="Widgets\Glyphs.lua"/>
+	<Script file="Widgets\Controls.lua"/>
+	<Script file="Widgets\Menu.lua"/>
+	<Script file="Widgets\Choice.lua"/>
+	<Script file="Widgets\Inputs.lua"/>
+	<Script file="Widgets\Containers.lua"/>
+	<Script file="Widgets\Lists.lua"/>
+	<Script file="Widgets\Bars.lua"/>
+	<Script file="Layout\Layout.lua"/>
 </Ui>

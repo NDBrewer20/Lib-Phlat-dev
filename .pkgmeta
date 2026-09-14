@@ -1,4 +1,5 @@
 package-as: LibPhlat-1.0
 
+# docs stay on the repo, addons pulling this in don't ship them.
 ignore:
-  - README.md
+  - "*.md"
