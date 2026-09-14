@@ -70,7 +70,7 @@ The palette keys are `window`, `titlebar`, `sidebar`, `control`, `popup`, `row`,
 | --- | --- |
 | `button` | `default`, `primary`, `ghost`, `danger`, `link`, `tool` |
 | `glyphButton` | `default`, `boxed`, `wash` |
-| `iconButton` | `default`, `boxed`, `plain` |
+| `iconButton` | `default`, `boxed`, `plain`, `round` |
 | `icon` | `default`, `framed` |
 | `checkbox` | `default`, `tick`, `round` |
 | `radio` | `default`, `round` |
@@ -150,6 +150,7 @@ Menus, dropdowns and every choice control take the same list of items. Fields a 
 | `UI.Border(frame, color, thickness)` | four edges with `Paint(spec)`, `SetColor(r, g, b, a)`, `SetThickness(n)` and `SetShown(shown)` |
 | `UI.Divider(parent, vertical, color)` | a 1px line to anchor yourself |
 | `UI.Chrome(frame, style)` | builds `bg`, `edges`, `highlight` and `rule` off a style |
+| `UI.RoundMask(frame, region, anchor)` | masks a texture into a circle covering `anchor` (the texture by default). Only masks a texture once |
 | `UI.Text(parent, text, template, color)` | a font string. `template` can instead be a table of `font`, `size`, `color`, `justify`, `justifyV`, `wrap`, `width` and `layer` |
 | `UI.Tooltip(frame, title, body, opts)` | hover tooltip. Hooks instead of replacing when the frame already has scripts |
 | `UI.HookTooltip(frame, Fill, anchor)` | tooltip filled by `Fill(frame, GameTooltip)`, which can return `false` to skip it |
@@ -182,7 +183,7 @@ Glyphs are `chevron`, `chevronLeft`, `chevronRight`, `gear`, `cross`, `check`, `
 
 **`UI.IconButton(parent, size, texture, title, body, opts)`**
 
-- The same as a glyph button, but for any texture. The default style tints it, `boxed` puts it in a control box, and `plain` keeps its own colors.
+- The same as a glyph button, but for any texture. The default style tints it, `boxed` puts it in a control box, `plain` keeps its own colors, and `round` keeps its own colors cut into a circle like a portrait.
 - Methods: `SetIcon`, `SetSelected`, `SetStyle`
 
 **`UI.SplitButton(parent, text, width, opts)`**

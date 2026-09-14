@@ -10,6 +10,7 @@ lib:Module("Glyphs", function(UI, P, config)
 	local UNKNOWN_ICON = P.UNKNOWN_ICON
 	local HasAtlas = P.HasAtlas
 	local SelectedWash = P.SelectedWash
+	local RoundMask = P.RoundMask
 	--------------------------------------------------------------------------------
 	-- Glyphs
 	--
@@ -296,6 +297,15 @@ lib:Module("Glyphs", function(UI, P, config)
 		end
 		if title or body then button.tipTitle, button.tipBody = title, body end
 
+		-- the round style cuts the icon and its washes into a circle.
+		local function Round(self)
+			if self.style.shape ~= "round" then return end
+			RoundMask(self, icon, self)
+			RoundMask(self, self.bg, self)
+			RoundMask(self, self.highlight, self)
+		end
+		Round(button)
+
 		function button:SetIcon(source, atlas)
 			IconSetTexture(icon, source, atlas or (opts and opts.atlas), self.style.tint and 0 or self.style.zoom)
 			self:Refresh()
@@ -330,6 +340,7 @@ lib:Module("Glyphs", function(UI, P, config)
 		function button:SetStyle(newStyle, overrides)
 			self.style = UI.Style("iconButton", newStyle, overrides)
 			Chrome(self, self.style)
+			Round(self)
 			self:Refresh()
 		end
 

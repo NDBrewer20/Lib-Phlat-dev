@@ -227,6 +227,8 @@ lib:Module("Theme", function(UI, P, config)
 			},
 			boxed = { tint = false, pad = 0, inset = 3, bg = "control", border = "border", highlight = "accent:0.18" },
 			plain = { tint = false, highlight = "accent:0.30" },
+			-- a portrait style circle, keeps its own colors.
+			round = { tint = false, pad = 0, zoom = 0, shape = "round", highlight = "white:0.18", selected = false },
 		},
 		icon = {
 			default = { bg = false, border = false, inset = 0, zoom = 0.08 },
@@ -567,8 +569,25 @@ lib:Module("Theme", function(UI, P, config)
 	end
 	UI.Chrome = Chrome
 
+	local ROUND_MASK = "Interface/CHARACTERFRAME/TempPortraitAlphaMask"
+
+	-- masks a texture into a circle, only ever once per texture. anchor is what the
+	-- circle covers, the texture itself by default.
+	local function RoundMask(frame, region, anchor)
+		if not region or not frame.CreateMaskTexture then return end
+		if region.roundMask then return region.roundMask end
+		local mask = frame:CreateMaskTexture()
+		mask:SetTexture(ROUND_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+		mask:SetAllPoints(anchor or region)
+		region:AddMaskTexture(mask)
+		region.roundMask = mask
+		return mask
+	end
+	UI.RoundMask = RoundMask
+
 	P.themed = themed
 	P.Fill = Fill
 	P.Chrome = Chrome
+	P.RoundMask = RoundMask
 	P.StyleFor = StyleFor
 end)

@@ -156,16 +156,7 @@ lib:Module("Controls", function(UI, P, config)
 	-- Checkbox, radio and switch
 	--------------------------------------------------------------------------------
 
-	local ROUND_MASK = "Interface/CHARACTERFRAME/TempPortraitAlphaMask"
-
-	local function RoundMask(frame, region, anchor)
-		if not frame.CreateMaskTexture then return end
-		local mask = frame:CreateMaskTexture()
-		mask:SetTexture(ROUND_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-		mask:SetAllPoints(anchor or region)
-		region:AddMaskTexture(mask)
-		return mask
-	end
+	local RoundMask = P.RoundMask
 
 	-- label text beside a box, part of what's clickable.
 	local function BoxLabel(box, text)
