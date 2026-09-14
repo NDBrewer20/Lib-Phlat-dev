@@ -712,7 +712,9 @@ lib:Module("Containers", function(UI, P)
 			local spec = self.specs and self.specs[index]
 			if not spec then return end
 			self.answered = true
-			local keep = spec.onClick and spec.onClick(self, self.input:IsShown() and self.input:GetText() or nil)
+			local text = (self.area and self.area:IsShown() and self.area:GetText())
+				or (self.input:IsShown() and self.input:GetText()) or nil
+			local keep = spec.onClick and spec.onClick(self, text)
 			if not keep then self:Hide() end
 		end
 
@@ -720,6 +722,7 @@ lib:Module("Containers", function(UI, P)
 			if not self.answered and self.onCancel then self.onCancel(self) end
 			self.onCancel = nil
 			self.input:ClearFocus()
+			if self.area then self.area:ClearFocus() end
 		end)
 
 		dialogs[#dialogs + 1] = dialog
@@ -728,7 +731,8 @@ lib:Module("Containers", function(UI, P)
 
 	-- opts takes title, text, input (true, or the text to start with), buttons
 	-- ({ text, style, onClick(dialog, inputText) }, first is rightmost and what
-	-- enter presses), width, onCancel and onShow.
+	-- enter presses), width, onCancel and onShow. multiline makes the input a
+	-- scrolling box that wraps, inputHeight tall (120), capped at maxLetters.
 	function UI.Dialog(opts)
 		opts = opts or {}
 		local dialog
@@ -751,14 +755,32 @@ lib:Module("Containers", function(UI, P)
 
 		local y = s.padding + math.max(14, dialog.text:GetStringHeight())
 
-		if opts.input then
+		if opts.input and opts.multiline then
+			-- a scrolling box that wraps, for anything longer than a line. made the first
+			-- time one's asked for. enter's a new line in here, so the buttons answer.
+			local boxWidth, boxHeight = width - s.padding * 2, opts.inputHeight or 120
+			if not dialog.area then
+				dialog.area = UI.TextArea(dialog.body, boxWidth, boxHeight)
+			end
+
+			dialog.area:Resize(boxWidth, boxHeight)
+			dialog.area:ClearAllPoints()
+			dialog.area:SetPoint("TOPLEFT", s.padding, -y - 10)
+			dialog.area.edit:SetMaxLetters(opts.maxLetters or 0)
+			dialog.area:SetText(type(opts.input) == "string" and opts.input or "")
+			dialog.area:Show()
+			dialog.input:Hide()
+			y = y + boxHeight + 20
+		elseif opts.input then
 			dialog.input:ClearAllPoints()
 			dialog.input:SetPoint("TOPLEFT", s.padding, -y - 10)
 			dialog.input:SetText(type(opts.input) == "string" and opts.input or "")
 			dialog.input:Show()
+			if dialog.area then dialog.area:Hide() end
 			y = y + 32
 		else
 			dialog.input:Hide()
+			if dialog.area then dialog.area:Hide() end
 		end
 
 		local previous
@@ -788,7 +810,9 @@ lib:Module("Containers", function(UI, P)
 		dialog:Show()
 		dialog:Raise()
 
-		if opts.input then dialog.input:SetFocus() end
+		if opts.input then
+			if opts.multiline then dialog.area:SetFocus() else dialog.input:SetFocus() end
+		end
 		if opts.onShow then opts.onShow(dialog) end
 		return dialog
 	end
@@ -809,12 +833,14 @@ lib:Module("Containers", function(UI, P)
 		}, { title = opts.title, width = opts.width }))
 	end
 
-	-- onAccept(text) gets what was typed. opts.default is the text it starts with.
+	-- onAccept(text) gets what was typed. opts.default is the text it starts with,
+	-- multiline, inputHeight and maxLetters go through to the dialog.
 	function UI.Prompt(text, onAccept, opts)
 		opts = opts or {}
 		return UI.Dialog({
 			title = opts.title, text = text, width = opts.width,
 			input = opts.default or true,
+			multiline = opts.multiline, inputHeight = opts.inputHeight, maxLetters = opts.maxLetters,
 			onCancel = opts.onCancel,
 			buttons = {
 				{ text = opts.acceptText or "Okay", style = "primary", onClick = function(dialog, value)

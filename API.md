@@ -100,7 +100,8 @@ The palette keys are `window`, `titlebar`, `sidebar`, `control`, `popup`, `row`,
 | `dialog` | `default` |
 | `tag`, `rating`, `calendar` | `default` |
 | `toolbar` | `default`, `clear` |
-| `menubar`, `breadcrumb`, `pagination`, `steps`, `spinner`, `toast` | `default` |
+| `menubar`, `breadcrumb`, `pagination`, `steps`, `spinner` | `default` |
+| `toast` | `default`, `celebrate` |
 
 **Common style fields**
 
@@ -133,11 +134,13 @@ Menus, dropdowns and every choice control take the same list of items. Fields a 
 | `tooltip`, `tooltipTitle`, `tooltipFunc(tooltip, item)` | all | hover help |
 | `color` | all | label color spec |
 | `icon`, `iconAtlas`, `iconCoords` | menus, strips, trees | a texture before the label |
+| `iconColor` | menus | tints that icon, a color spec like `"good"` |
 | `selectedText` | dropdown, cycle, combo | what the closed control shows once it's picked |
 | `header`, `separator` | menus | a caption, or a line |
 | `submenu` | menus | a list or a function returning one, opens off the side at any depth |
 | `checked`, `radio` | menus | a tick, or a dot for radio style |
 | `note` | menus | dim text on the right |
+| `actions` | menus | small buttons on the right that don't pick the row: a list, or a function of the item returning one, of `{ atlas or icon, color, tooltipTitle, tooltip, onClick(value, item, mouseButton), keepOpen }`. `color` tints the art, a missing atlas falls back to `icon`. They read left to right in the order given and close the menu unless `keepOpen`. The style's `actionSize` sizes them, 14 by default |
 | `keepOpen` | menus | picking it doesn't close the menu |
 | `searchText` | menus | what search matches instead of text |
 | `badge`, `empty`, `width` | tabs, segmented | a count pill, greyed text, fixed width |
@@ -402,13 +405,14 @@ Segmented and tabs also take `fill`, `wrap`, `align` and `onLayout(lines, height
 **`UI.Dialog(opts)`**
 
 - A flat stand-in for StaticPopup. Several can stack, and escape cancels.
-- `opts`: `title`, `text`, `input` (`true` or starting text), `width`, `buttons` (a list of `{ text, style, onClick(dialog, inputText) }`), `onCancel`, `onShow`
+- `opts`: `title`, `text`, `input` (`true` or starting text), `multiline`, `inputHeight`, `maxLetters`, `width`, `buttons` (a list of `{ text, style, onClick(dialog, inputText) }`), `onCancel`, `onShow`
+- `multiline` makes the input a scrolling box that wraps, `inputHeight` tall (120 by default) and capped at `maxLetters`. Enter makes a new line in it, so only the buttons answer.
 - The first button is the rightmost and is what Enter presses. Returning `true` from `onClick` keeps the dialog up.
 
 **`UI.Confirm(text, onAccept, opts)`, `UI.Prompt(text, onAccept(text), opts)`, `UI.Alert(text, opts)`**
 
 - The common dialogs.
-- `opts`: `title`, `acceptText`, `cancelText`, `danger`, `default` (for prompts), `onCancel`
+- `opts`: `title`, `acceptText`, `cancelText`, `danger`, `default` (for prompts), `onCancel`, and for prompts `multiline`, `inputHeight`, `maxLetters`
 
 ## Lists, trees, tables and grids
 
@@ -479,7 +483,8 @@ Segmented and tabs also take `fill`, `wrap`, `align` and `onLayout(lines, height
 **`UI.Toast(text, opts)`**
 
 - A note that stacks at the top of the screen and goes away by itself. Hovering holds it.
-- `opts`: `title`, `kind` (`info`, `good`, `warn`, `bad`), `icon`, `duration` (0 stays until closed), `anchor`, `onClick`
+- `opts`: `style`, `title`, `kind` (`info`, `good`, `warn`, `bad`), `icon`, `duration` (0 stays until closed), `anchor`, `onClick`
+- The `celebrate` style is for something worth a fuss: a bigger icon that flashes once when it lands, and it stays longer. The flash is the style's `flash` atlas and only shows with an icon.
 - Returns the toast, which has `Dismiss()`.
 
 ## Layout

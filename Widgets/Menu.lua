@@ -97,6 +97,7 @@ lib:Module("Menu", function(UI, P, config)
 	end
 
 	local EntryClick, EntryEnter, EntryLeave
+	local ActionClick, ActionEnter, ActionLeave
 
 	local function NewEntry(panel)
 		local s = panel.menu.style
@@ -123,6 +124,7 @@ lib:Module("Menu", function(UI, P, config)
 		if entry.icon then entry.icon:Hide() end
 		if entry.note then entry.note:Hide() end
 		if entry.arrow then entry.arrow:Hide() end
+		for _, button in ipairs(entry.actionButtons or {}) do button:Hide() end
 	end
 
 	-- lays one row out and says how wide it would like to be.
@@ -198,7 +200,16 @@ lib:Module("Menu", function(UI, P, config)
 				icon:SetTexture(item.icon)
 				icon:SetTexCoord(unpack(item.iconCoords or FULL_COORDS))
 			end
-			icon:SetDesaturated(disabled)
+
+			-- iconColor tints it, greyed first so it's the colour asked for, same as an action's color.
+			if item.iconColor then
+				icon:SetDesaturated(true)
+				UI.Paint(icon, disabled and s.disabledText or item.iconColor, "vertex")
+			else
+				UI.Unpaint(icon)
+				icon:SetVertexColor(1, 1, 1, 1)
+				icon:SetDesaturated(disabled)
+			end
 			icon:SetShown(item.icon ~= nil or item.iconAtlas ~= nil)
 			x = x + s.iconSize + 5
 		elseif entry.icon then
@@ -215,6 +226,68 @@ lib:Module("Menu", function(UI, P, config)
 			right = 16
 		elseif entry.arrow then
 			entry.arrow:Hide()
+		end
+
+		-- small buttons on the right that do their own thing without picking the row.
+		-- pooled with the row, so a row that had three and now has one hides two. laid
+		-- from the right edge back, last one first, so they read in the order given.
+		local actions = not header and Resolve(item.actions, item) or nil
+		local actionSize = s.actionSize or 14
+		entry.actionButtons = entry.actionButtons or {}
+		for index = math.max(actions and #actions or 0, #entry.actionButtons), 1, -1 do
+			local action = actions and actions[index]
+			local button = entry.actionButtons[index]
+
+			if action then
+				if not button then
+					button = CreateFrame("Button", nil, entry)
+					button.icon = button:CreateTexture(nil, "ARTWORK")
+					button.icon:SetAllPoints()
+
+					-- behind the icon rather than a highlight layer, which draws over it and
+					-- hid the icon under the wash. shown and hidden by the enter and leave.
+					button.hover = button:CreateTexture(nil, "BACKGROUND")
+					button.hover:SetPoint("TOPLEFT", -2, 2)
+					button.hover:SetPoint("BOTTOMRIGHT", 2, -2)
+					button.hover:Hide()
+					button:SetScript("OnClick", ActionClick)
+					button:SetScript("OnEnter", ActionEnter)
+					button:SetScript("OnLeave", ActionLeave)
+					entry.actionButtons[index] = button
+				end
+
+				button.entry, button.action = entry, action
+				button:SetSize(actionSize, actionSize)
+				UI.Paint(button.hover, s.highlight, "fill")
+
+				-- a missing atlas draws nothing at all, so it falls back to the icon, or the
+				-- question mark, rather than leaving a button nobody can see.
+				if action.atlas and C_Texture.GetAtlasInfo(action.atlas) then
+					button.icon:SetAtlas(action.atlas)
+				else
+					button.icon:SetTexture(action.icon or UI.UNKNOWN_ICON)
+					button.icon:SetTexCoord(0, 1, 0, 1)
+				end
+
+				-- color tints the art, greyed first so it comes out the colour asked for and
+				-- not the art's own mixed with it. without one it's the art as it is.
+				if action.color then
+					button.icon:SetDesaturated(true)
+					UI.Paint(button.icon, disabled and s.disabledText or action.color, "vertex")
+				else
+					UI.Unpaint(button.icon)
+					button.icon:SetVertexColor(1, 1, 1, 1)
+					button.icon:SetDesaturated(disabled)
+				end
+				button:SetEnabled(not disabled)
+
+				button:ClearAllPoints()
+				button:SetPoint("RIGHT", -right, 0)
+				button:Show()
+				right = right + actionSize + 4
+			elseif button then
+				button:Hide()
+			end
 		end
 
 		if item.note and not header then
@@ -704,6 +777,38 @@ lib:Module("Menu", function(UI, P, config)
 			entry.tipShown = nil
 			GameTooltip:Hide()
 		end
+	end
+
+	-- an action button runs its own onClick and never picks the row. it closes the
+	-- menu like a pick would, unless the action says keepOpen.
+	ActionClick = function(button, mouseButton)
+		local entry, action = button.entry, button.action
+		local item = entry and entry.item
+		if not item or entry.disabled then return end
+
+		local menu = entry.panel.menu
+		if not action.keepOpen then menu:Close() end
+		if action.onClick then action.onClick(item.value, item, mouseButton) end
+		if action.keepOpen then menu:Redraw() end
+	end
+
+	ActionEnter = function(button)
+		button.hover:Show()
+
+		local action = button.action
+		if not action or not (action.tooltip or action.tooltipTitle) then return end
+
+		GameTooltip:SetOwner(button, "ANCHOR_RIGHT")
+		GameTooltip:AddLine(action.tooltipTitle or action.tooltip, 1, 1, 1)
+		if action.tooltipTitle and action.tooltip then
+			GameTooltip:AddLine(action.tooltip, BODY[1], BODY[2], BODY[3], true)
+		end
+		GameTooltip:Show()
+	end
+
+	ActionLeave = function(button)
+		button.hover:Hide()
+		GameTooltip:Hide()
 	end
 
 	--------------------------------------------------------------------------------

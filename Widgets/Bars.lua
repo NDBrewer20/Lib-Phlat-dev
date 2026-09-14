@@ -45,9 +45,12 @@ lib:Module("Bars", function(UI, P)
 		default = {
 			width = 280, bg = "popup", border = "border", stripeSize = 3, font = "small",
 			titleFont = "body", title = "text", text = "dim", pad = 10, duration = 4,
-			spacing = 6, strata = "FULLSCREEN_DIALOG",
+			spacing = 6, strata = "FULLSCREEN_DIALOG", iconSize = 24, flash = false,
 			kinds = { info = "accent", good = "good", warn = "warn", bad = "bad" },
 		},
+		-- for something worth making a fuss of. bigger icon, sticks around longer and
+		-- flashes once round the icon when it lands.
+		celebrate = { width = 320, iconSize = 40, duration = 8, pad = 12, flash = "bags-glow-flash" },
 	})
 
 	--------------------------------------------------------------------------------
@@ -677,7 +680,25 @@ lib:Module("Bars", function(UI, P)
 			toast.stripe:SetPoint("TOPLEFT")
 			toast.stripe:SetPoint("BOTTOMLEFT")
 			toast.icon = toast:CreateTexture(nil, "ARTWORK")
-			toast.icon:SetSize(24, 24)
+
+			-- the one off flash round the icon for styles that ask for it. an animation,
+			-- so nothing runs every frame.
+			toast.flash = toast:CreateTexture(nil, "OVERLAY")
+			toast.flash:SetBlendMode("ADD")
+			toast.flash:Hide()
+			toast.flashAnim = toast.flash:CreateAnimationGroup()
+			local fadeIn = toast.flashAnim:CreateAnimation("Alpha")
+			fadeIn:SetFromAlpha(0)
+			fadeIn:SetToAlpha(1)
+			fadeIn:SetDuration(0.25)
+			fadeIn:SetOrder(1)
+			local fadeOut = toast.flashAnim:CreateAnimation("Alpha")
+			fadeOut:SetFromAlpha(1)
+			fadeOut:SetToAlpha(0)
+			fadeOut:SetDuration(0.9)
+			fadeOut:SetOrder(2)
+			toast.flashAnim:SetScript("OnFinished", function() toast.flash:Hide() end)
+
 			toast.title = UI.Text(toast, "", style.titleFont, style.title)
 			toast.text = UI.Text(toast, "", style.font, style.text)
 			toast.text:SetJustifyV("TOP")
@@ -705,18 +726,33 @@ lib:Module("Bars", function(UI, P)
 		toast.anchor = opts.anchor or { "TOP", UIParent, "TOP", 0, -120 }
 		toast:SetWidth(style.width)
 
+		-- pooled toasts can come back as a different style, so the chrome's put on again.
+		Chrome(toast, style)
+
 		toast.stripe:SetWidth(style.stripeSize)
 		UI.Paint(toast.stripe, style.kinds[opts.kind or "info"] or opts.kind or "accent", "fill")
 
+		local iconSize = style.iconSize or 24
 		local left = style.pad + style.stripeSize
 		if opts.icon then
 			toast.icon:SetTexture(opts.icon)
+			toast.icon:SetSize(iconSize, iconSize)
 			toast.icon:ClearAllPoints()
 			toast.icon:SetPoint("TOPLEFT", left, -style.pad)
 			toast.icon:Show()
-			left = left + 30
+			left = left + iconSize + 6
 		else
 			toast.icon:Hide()
+		end
+
+		toast.flashAnim:Stop()
+		toast.flash:Hide()
+		local flash = opts.icon and style.flash and C_Texture.GetAtlasInfo(style.flash) and style.flash
+		if flash then
+			toast.flash:SetAtlas(flash)
+			toast.flash:ClearAllPoints()
+			toast.flash:SetPoint("CENTER", toast.icon, "CENTER")
+			toast.flash:SetSize(iconSize * 1.9, iconSize * 1.9)
 		end
 
 		local textWidth = style.width - left - style.pad - 10
@@ -736,11 +772,16 @@ lib:Module("Bars", function(UI, P)
 		toast.text:SetText(text or "")
 		y = y + toast.text:GetStringHeight() + style.pad
 
-		toast:SetHeight(math.max(y, opts.icon and 24 + style.pad * 2 or 0))
+		toast:SetHeight(math.max(y, opts.icon and iconSize + style.pad * 2 or 0))
 
 		toasts[#toasts + 1] = toast
 		Restack(style)
 		toast:Show()
+
+		if flash then
+			toast.flash:Show()
+			toast.flashAnim:Play()
+		end
 
 		if toast.timer then toast.timer:Cancel() toast.timer = nil end
 		if toast.duration > 0 then
