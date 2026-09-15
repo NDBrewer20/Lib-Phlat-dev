@@ -667,6 +667,8 @@ lib:Module("Bars", function(UI, P)
 	-- a short note that stacks at the top of the screen and goes by itself. opts
 	-- takes title, kind (info, good, warn, bad), icon, duration (0 stays until
 	-- closed), anchor ({ point, relativeTo, relativePoint, x, y }) and onClick.
+	-- left click runs onClick then dismisses, right click only dismisses. without
+	-- an onClick either one just dismisses.
 	function UI.Toast(text, opts)
 		opts = opts or {}
 		local style = StyleFor("toast", opts)
@@ -705,8 +707,9 @@ lib:Module("Bars", function(UI, P)
 			toast.close = UI.GlyphButton(toast, 9, "cross", "Dismiss")
 			toast.close:SetPoint("TOPRIGHT", -2, -2)
 			toast.close:SetScript("OnClick", function() Dismiss(toast) end)
-			toast:SetScript("OnClick", function(self)
-				if self.onClick then self.onClick(self) end
+			toast:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+			toast:SetScript("OnClick", function(self, mouse)
+				if mouse ~= "RightButton" and self.onClick then self.onClick(self) end
 				Dismiss(self)
 			end)
 			-- hovering holds it, leaving starts the clock again.

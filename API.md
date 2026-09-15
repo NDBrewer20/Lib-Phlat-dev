@@ -484,6 +484,7 @@ Segmented and tabs also take `fill`, `wrap`, `align` and `onLayout(lines, height
 
 - A note that stacks at the top of the screen and goes away by itself. Hovering holds it.
 - `opts`: `style`, `title`, `kind` (`info`, `good`, `warn`, `bad`), `icon`, `duration` (0 stays until closed), `anchor`, `onClick`
+- Left click runs `onClick` and then dismisses it. Right click only dismisses it. Without `onClick`, either click just dismisses it.
 - The `celebrate` style is for something worth a fuss: a bigger icon that flashes once when it lands, and it stays longer. The flash is the style's `flash` atlas and only shows with an icon.
 - Returns the toast, which has `Dismiss()`.
 

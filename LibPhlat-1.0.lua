@@ -13,7 +13,7 @@
 -- and New runs them in order, so a file can use what the ones before it left in P.
 --------------------------------------------------------------------------------
 
-local MAJOR, MINOR = "LibPhlat-1.0", 10
+local MAJOR, MINOR = "LibPhlat-1.0", 11
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 
 -- a newer or equal copy is already loaded, so the rest of this copy's files
